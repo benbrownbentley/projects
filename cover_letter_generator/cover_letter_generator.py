@@ -142,7 +142,8 @@ class CoverLetterGenerator:
             messages=messages,
             tools=self.tools,
             tool_choice="auto",
-            temperature=0.7
+            temperature=0.7,
+            timeout=45  # 45 second timeout for cover letter generation
         )
         
         # Handle tool calls if any
@@ -169,7 +170,8 @@ class CoverLetterGenerator:
             response = self.openai_client.chat.completions.create(
                 model=MODEL,
                 messages=messages,
-                temperature=0.7
+                temperature=0.7,
+                timeout=45  # 45 second timeout
             )
         
         return response.choices[0].message.content
@@ -206,17 +208,27 @@ class CoverLetterGenerator:
     
     def _add_metadata(self, cover_letter: str, resume_data: Dict, job_data: Dict) -> str:
         """Add metadata header to the cover letter"""
-        metadata = f"""# Cover Letter for {job_data.get('job_title', 'Position')} at {job_data.get('company_name', 'Company')}
+        try:
+            # Safely extract data with proper fallbacks
+            job_title = job_data.get('job_title', 'Position') if isinstance(job_data, dict) else 'Position'
+            company_name = job_data.get('company_name', 'Company') if isinstance(job_data, dict) else 'Company'
+            candidate_name = resume_data.get('name', 'Candidate') if isinstance(resume_data, dict) else 'Candidate'
+            
+            metadata = f"""# Cover Letter for {job_title} at {company_name}
 
-**Generated for:** {resume_data.get('name', 'Candidate')}  
+**Generated for:** {candidate_name}  
 **Date:** {self._get_current_date()}  
-**Position:** {job_data.get('job_title', 'N/A')}  
-**Company:** {job_data.get('company_name', 'N/A')}
+**Position:** {job_title}  
+**Company:** {company_name}
 
 ---
 
 """
-        return metadata + cover_letter
+            return metadata + cover_letter
+        except Exception as e:
+            # If metadata fails, return just the cover letter
+            print(f"❌ Metadata error: {str(e)}")
+            return cover_letter
     
     def _analyze_resume_match(self, resume_data: Dict, job_data: Dict) -> str:
         """Tool function to analyze resume-job match"""

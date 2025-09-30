@@ -46,8 +46,20 @@ class ResumeParser:
     def parse_resume(self, resume_file_path: str, file_type: str) -> Dict[str, Any]:
         """Parse resume and extract structured information"""
         try:
+            # Check file size (limit to 2MB)
+            import os
+            file_size = os.path.getsize(resume_file_path)
+            if file_size > 2 * 1024 * 1024:  # 2MB limit
+                print(f"⚠️ File too large: {file_size} bytes (max 2MB)")
+                return {"error": "Resume file is too large. Please use a file smaller than 2MB."}
+            
             # Extract text based on file type
             resume_text = self._extract_resume_text(resume_file_path, file_type)
+            
+            # Limit text length to prevent API timeouts
+            if len(resume_text) > 10000:  # 10k character limit
+                resume_text = resume_text[:10000] + "..."
+                print(f"⚠️ Resume text truncated to 10,000 characters")
             
             # Use AI to analyze and structure the resume
             structured_data = self._analyze_with_ai(resume_text)
@@ -90,7 +102,8 @@ class ResumeParser:
                 {"role": "system", "content": RESUME_ANALYSIS_PROMPT},
                 {"role": "user", "content": analysis_prompt}
             ],
-            temperature=0.1
+            temperature=0.1,
+            timeout=30  # 30 second timeout
         )
         
         # Parse JSON response
@@ -108,4 +121,7 @@ class ResumeParser:
         except json.JSONDecodeError as json_err:
             print(f"❌ JSON parsing error: {json_err}")
             print(f"❌ Problematic JSON string: {json_str}")
+            return FALLBACK_RESUME_DATA
+        except Exception as e:
+            print(f"❌ Resume parsing error: {str(e)}")
             return FALLBACK_RESUME_DATA

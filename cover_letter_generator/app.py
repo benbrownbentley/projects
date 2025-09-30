@@ -4,6 +4,14 @@
 import gradio as gr
 from cover_letter_generator import CoverLetterGenerator
 
+# Version information
+VERSION = "1.2.0"
+BUILD_DATE = "2024-01-15"
+
+def get_version_info():
+    """Get version information for display"""
+    return f"v{VERSION} ({BUILD_DATE})"
+
 
 def create_gradio_interface():
     """Create and configure the Gradio interface"""
@@ -34,13 +42,34 @@ def create_gradio_interface():
             progress(0.2, desc="🔍 Analyzing resume...")
             status = "🔍 Analyzing resume content..."
             
-            # Generate cover letter
-            result = generator.generate_cover_letter(resume_file, job_description, file_type, progress)
+            # Generate cover letter with timeout handling
+            import signal
             
-            progress(1.0, desc="✅ Cover letter generated successfully!")
-            status = "✅ Cover letter generated successfully!"
+            def timeout_handler(signum, frame):
+                raise TimeoutError("Cover letter generation timed out")
             
-            return result, status
+            # Set 90 second timeout
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(90)
+            
+            try:
+                result = generator.generate_cover_letter(resume_file, job_description, file_type, progress)
+                signal.alarm(0)  # Cancel timeout
+            except TimeoutError:
+                signal.alarm(0)  # Cancel timeout
+                progress(1.0, desc="❌ Timeout occurred")
+                status = "❌ Generation timed out - please try again"
+                return "❌ Cover letter generation timed out after 90 seconds. Please try again with a smaller resume or simpler job description.", status
+            
+            # Check if the result contains an error
+            if result.startswith("Error"):
+                progress(1.0, desc="❌ Error occurred")
+                status = "❌ Error occurred"
+                return result, status
+            else:
+                progress(1.0, desc="✅ Cover letter generated successfully!")
+                status = "✅ Cover letter generated successfully!"
+                return result, status
             
         except Exception as e:
             progress(1.0, desc="❌ Error occurred")
@@ -49,7 +78,7 @@ def create_gradio_interface():
     
     # Create Gradio interface
     with gr.Blocks(
-        title="AI Cover Letter Generator",
+        title=f"AI Cover Letter Generator v{VERSION}",
         theme=gr.themes.Soft(),
         css="""
         .gradio-container {
@@ -60,20 +89,32 @@ def create_gradio_interface():
             font-family: 'Georgia', serif;
             line-height: 1.6;
         }
+        .status-frame {
+            margin-bottom: 10px !important;
+        }
+        .status-frame .markdown {
+            padding: 10px !important;
+            background-color: #f8f9fa !important;
+            border-radius: 5px !important;
+            border-left: 4px solid #007bff !important;
+        }
         """
     ) as interface:
         
-        gr.Markdown("""
+        gr.Markdown(f"""
         # 🤖 AI-Powered Cover Letter Generator
+        
+        **Version {VERSION}** | Built: {BUILD_DATE}
         
         Upload your resume and paste a job description to generate a personalized, professional cover letter using advanced AI analysis.
         
         **Features:**
-        - 📄 Supports PDF, DOCX, and text files
+        - 📄 Supports PDF, DOCX, and text files (max 2MB)
         - 🔍 Intelligent resume and job description analysis
         - ✍️ Personalized cover letter generation
         - 🎯 Matches your skills to job requirements
         - 📝 Professional formatting in markdown
+        - ⏱️ Optimized for fast processing (90s timeout)
         """)
         
         with gr.Row():
@@ -108,12 +149,14 @@ def create_gradio_interface():
             with gr.Column(scale=2):
                 gr.Markdown("### ✍️ Generated Cover Letter")
                 
-                # Status message
-                status_message = gr.Markdown(
-                    value="Ready to generate cover letter. Upload your resume and paste a job description.",
-                    label="Status"
-                )
+                # Status message in its own frame
+                with gr.Frame(label=f"📊 Status (v{VERSION})", elem_classes=["status-frame"]):
+                    status_message = gr.Markdown(
+                        value="Ready to generate cover letter. Upload your resume and paste a job description.",
+                        show_label=False
+                    )
                 
+                # Cover letter output
                 cover_letter_output = gr.Markdown(
                     label="Cover Letter",
                     elem_classes=["cover-letter-output"],
@@ -154,6 +197,13 @@ def create_gradio_interface():
         - The AI will automatically match your skills to job requirements
         - Generated cover letters are formatted in markdown for easy editing
         """)
+        
+        # Footer with version info
+        gr.Markdown(f"""
+        <div style='text-align: center; color: #666; font-size: 0.9em; margin-top: 20px;'>
+        AI Cover Letter Generator {get_version_info()} | Built with ❤️ using Gradio & OpenAI
+        </div>
+        """)
     
     return interface
 
@@ -161,7 +211,9 @@ def create_gradio_interface():
 def main():
     """Main function to run the application"""
     print("🚀 Starting AI Cover Letter Generator...")
+    print(f"📋 Version: {get_version_info()}")
     print("📱 Opening Gradio interface...")
+    print("💡 If browser doesn't open automatically, look for the URL in the output below!")
     
     interface = create_gradio_interface()
     
@@ -171,12 +223,16 @@ def main():
     for port in ports_to_try:
         try:
             print(f"🚀 Trying to launch on port {port}...")
+            print(f"✅ Successfully launched on port {port}!")
+            print(f"🌐 Opening browser to: http://127.0.0.1:{port}")
+            
             interface.launch(
                 server_name="127.0.0.1",
                 server_port=port,
                 share=False,
                 show_error=True,
-                quiet=False
+                quiet=False,
+                inbrowser=True  # Automatically open browser
             )
             break
         except OSError as e:

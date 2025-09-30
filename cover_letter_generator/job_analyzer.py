@@ -38,7 +38,8 @@ class JobAnalyzer:
                     {"role": "system", "content": JOB_ANALYSIS_PROMPT},
                     {"role": "user", "content": analysis_prompt}
                 ],
-                temperature=0.1
+                temperature=0.1,
+                timeout=30  # 30 second timeout
             )
             
             # Parse JSON response
