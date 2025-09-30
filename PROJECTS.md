@@ -70,6 +70,7 @@ The projects create various cache files during operation:
 
 1. **Automatic cleanup script:**
    ```bash
+   cd cover_letter_generator
    python cleanup.py
    ```
 
