@@ -4,31 +4,30 @@
 import gradio as gr
 from cover_letter_generator import CoverLetterGenerator
 
-# Version information
-VERSION = "1.2.0"
-BUILD_DATE = "2024-01-15"
-
-def get_version_info():
-    """Get version information for display"""
-    return f"v{VERSION} ({BUILD_DATE})"
-
 
 def create_gradio_interface():
     """Create and configure the Gradio interface"""
     
     generator = CoverLetterGenerator()
     
+    def show_loading():
+        """Show loading status"""
+        return gr.update(
+            visible=True, 
+            value="<div style='text-align: center; padding: 20px; font-size: 18px; color: #007bff;'>🔍 Analyzing - this may take a few minutes...</div>"
+        )
+    
     def process_cover_letter(resume_file, job_description, file_type, progress=gr.Progress()):
         """Process the cover letter generation with progress updates"""
         if resume_file is None:
-            return "❌ Please upload a resume file.", "❌ Please upload a resume file."
+            return "❌ Please upload a resume file."
         
         if not job_description.strip():
-            return "❌ Please provide a job description.", "❌ Please provide a job description."
+            return "❌ Please provide a job description."
         
         try:
-            progress(0.1, desc="📄 Starting cover letter generation...")
-            status = "📄 Starting cover letter generation..."
+            # Show loading animation
+            progress(None, desc="🔍 Analyzing - this may take a few minutes...")
             
             # Determine file type if not specified
             if file_type == "auto":
@@ -39,46 +38,18 @@ def create_gradio_interface():
                 else:
                     file_type = "text"
             
-            progress(0.2, desc="🔍 Analyzing resume...")
-            status = "🔍 Analyzing resume content..."
+            # Generate cover letter (timeout handled by OpenAI client timeouts)
+            result = generator.generate_cover_letter(resume_file, job_description, file_type, progress)
             
-            # Generate cover letter with timeout handling
-            import signal
-            
-            def timeout_handler(signum, frame):
-                raise TimeoutError("Cover letter generation timed out")
-            
-            # Set 90 second timeout
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(90)
-            
-            try:
-                result = generator.generate_cover_letter(resume_file, job_description, file_type, progress)
-                signal.alarm(0)  # Cancel timeout
-            except TimeoutError:
-                signal.alarm(0)  # Cancel timeout
-                progress(1.0, desc="❌ Timeout occurred")
-                status = "❌ Generation timed out - please try again"
-                return "❌ Cover letter generation timed out after 90 seconds. Please try again with a smaller resume or simpler job description.", status
-            
-            # Check if the result contains an error
-            if result.startswith("Error"):
-                progress(1.0, desc="❌ Error occurred")
-                status = "❌ Error occurred"
-                return result, status
-            else:
-                progress(1.0, desc="✅ Cover letter generated successfully!")
-                status = "✅ Cover letter generated successfully!"
-                return result, status
+            return result, gr.update(visible=False)
             
         except Exception as e:
-            progress(1.0, desc="❌ Error occurred")
             error_msg = f"❌ Error: {str(e)}"
-            return error_msg, error_msg
+            return error_msg, gr.update(visible=False)
     
     # Create Gradio interface
     with gr.Blocks(
-        title=f"AI Cover Letter Generator v{VERSION}",
+        title="AI Cover Letter Generator",
         theme=gr.themes.Soft(),
         css="""
         .gradio-container {
@@ -89,22 +60,23 @@ def create_gradio_interface():
             font-family: 'Georgia', serif;
             line-height: 1.6;
         }
-        .status-frame {
-            margin-bottom: 10px !important;
-        }
-        .status-frame .markdown {
-            padding: 10px !important;
+        .loading-status {
             background-color: #f8f9fa !important;
-            border-radius: 5px !important;
-            border-left: 4px solid #007bff !important;
+            border: 2px solid #007bff !important;
+            border-radius: 10px !important;
+            margin: 10px 0 !important;
+            animation: pulse 2s infinite !important;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
         }
         """
     ) as interface:
         
-        gr.Markdown(f"""
+        gr.Markdown("""
         # 🤖 AI-Powered Cover Letter Generator
-        
-        **Version {VERSION}** | Built: {BUILD_DATE}
         
         Upload your resume and paste a job description to generate a personalized, professional cover letter using advanced AI analysis.
         
@@ -114,7 +86,7 @@ def create_gradio_interface():
         - ✍️ Personalized cover letter generation
         - 🎯 Matches your skills to job requirements
         - 📝 Professional formatting in markdown
-        - ⏱️ Optimized for fast processing (90s timeout)
+        - ⏱️ Optimized for fast processing with API timeouts
         """)
         
         with gr.Row():
@@ -136,7 +108,7 @@ def create_gradio_interface():
                 job_description = gr.Textbox(
                     label="Paste the job description here",
                     placeholder="Copy and paste the complete job description...",
-                    lines=15,
+                    lines=12,
                     max_lines=20
                 )
                 
@@ -149,25 +121,29 @@ def create_gradio_interface():
             with gr.Column(scale=2):
                 gr.Markdown("### ✍️ Generated Cover Letter")
                 
-                # Status message in its own frame
-                with gr.Frame(label=f"📊 Status (v{VERSION})", elem_classes=["status-frame"]):
-                    status_message = gr.Markdown(
-                        value="Ready to generate cover letter. Upload your resume and paste a job description.",
-                        show_label=False
-                    )
+                # Loading status (initially hidden)
+                loading_status = gr.Markdown(
+                    value="",
+                    visible=False,
+                    elem_classes=["loading-status"]
+                )
                 
                 # Cover letter output
                 cover_letter_output = gr.Markdown(
                     label="Cover Letter",
                     elem_classes=["cover-letter-output"],
-                    show_copy_button=True
+                    show_copy_button=True,
+                    value="Upload your resume and paste a job description to get started."
                 )
         
         # Event handlers
         generate_btn.click(
+            fn=show_loading,
+            outputs=[loading_status]
+        ).then(
             fn=process_cover_letter,
             inputs=[resume_file, job_description, file_type],
-            outputs=[cover_letter_output, status_message],
+            outputs=[cover_letter_output, loading_status],
             show_progress=True
         )
         
@@ -198,10 +174,10 @@ def create_gradio_interface():
         - Generated cover letters are formatted in markdown for easy editing
         """)
         
-        # Footer with version info
-        gr.Markdown(f"""
+        # Footer
+        gr.Markdown("""
         <div style='text-align: center; color: #666; font-size: 0.9em; margin-top: 20px;'>
-        AI Cover Letter Generator {get_version_info()} | Built with ❤️ using Gradio & OpenAI
+        AI Cover Letter Generator | Built with ❤️ using Gradio & OpenAI
         </div>
         """)
     
@@ -211,7 +187,6 @@ def create_gradio_interface():
 def main():
     """Main function to run the application"""
     print("🚀 Starting AI Cover Letter Generator...")
-    print(f"📋 Version: {get_version_info()}")
     print("📱 Opening Gradio interface...")
     print("💡 If browser doesn't open automatically, look for the URL in the output below!")
     

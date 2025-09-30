@@ -70,40 +70,38 @@ class CoverLetterGenerator:
         try:
             # Step 1: Parse resume
             print("📄 Parsing resume...")
-            if progress:
-                progress(0.3, desc="📄 Parsing resume content...")
-            
             file_path = self._get_file_path(resume_file)
             resume_data = self.resume_parser.parse_resume(file_path, file_type)
+            
+            if not isinstance(resume_data, dict):
+                return f"Error: Resume parser returned invalid data type: {type(resume_data)}"
             
             if "error" in resume_data:
                 return f"Error parsing resume: {resume_data['error']}"
             
             # Step 2: Analyze job description
             print("🔍 Analyzing job description...")
-            if progress:
-                progress(0.6, desc="🔍 Analyzing job requirements...")
-            
             job_data = self.job_analyzer.analyze_job_description(job_description)
+            
+            if not isinstance(job_data, dict):
+                return f"Error: Job analyzer returned invalid data type: {type(job_data)}"
             
             if "error" in job_data:
                 return f"Error analyzing job description: {job_data['error']}"
             
             # Step 3: Generate cover letter
             print("✍️ Generating personalized cover letter...")
-            if progress:
-                progress(0.8, desc="✍️ Generating personalized cover letter...")
-            
             self._validate_data_structures(resume_data, job_data)
             
             # Create and send prompt to AI
             cover_letter = self._generate_with_ai(resume_data, job_data)
             
-            if progress:
-                progress(0.95, desc="📝 Finalizing cover letter...")
-            
             # Add metadata and return
-            return self._add_metadata(cover_letter, resume_data, job_data)
+            try:
+                result = self._add_metadata(cover_letter, resume_data, job_data)
+                return result
+            except Exception as metadata_error:
+                return f"Error finalizing cover letter: {str(metadata_error)}\n\nGenerated content:\n{cover_letter}"
             
         except Exception as e:
             return f"Error generating cover letter: {str(e)}"
@@ -119,9 +117,6 @@ class CoverLetterGenerator:
     
     def _validate_data_structures(self, resume_data: Dict, job_data: Dict) -> None:
         """Validate that data structures are correct"""
-        print(f"📊 Resume data keys: {list(resume_data.keys()) if isinstance(resume_data, dict) else 'Not a dict'}")
-        print(f"📊 Job data keys: {list(job_data.keys()) if isinstance(job_data, dict) else 'Not a dict'}")
-        
         if not isinstance(resume_data, dict):
             raise ValueError(f"Invalid resume data structure: {type(resume_data)}")
         if not isinstance(job_data, dict):
@@ -155,16 +150,21 @@ class CoverLetterGenerator:
                 function_name = tool_call.function.name
                 function_args = json.loads(tool_call.function.arguments)
                 
+                # Execute the tool function and create response
                 if function_name == "analyze_resume_match":
-                    match_analysis = self._analyze_resume_match(
-                        function_args["resume_data"], 
-                        function_args["job_data"]
-                    )
+                    result = self._analyze_resume_match(resume_data, job_data)
                 elif function_name == "identify_key_selling_points":
-                    selling_points = self._identify_selling_points(
-                        function_args["resume_data"], 
-                        function_args["job_data"]
-                    )
+                    result = self._identify_selling_points(resume_data, job_data)
+                else:
+                    result = "Unknown function"
+                
+                # Add tool response message
+                messages.append({
+                    "tool_call_id": tool_call.id,
+                    "role": "tool",
+                    "name": function_name,
+                    "content": result
+                })
             
             # Get final response after tool usage
             response = self.openai_client.chat.completions.create(
@@ -185,7 +185,7 @@ class CoverLetterGenerator:
         Name: {resume_data.get('name', 'N/A')}
         Skills: {', '.join(resume_data.get('skills', []))}
         Experience: {len(resume_data.get('experience', []))} positions
-        Education: {resume_data.get('education', [{}])}
+        Education: {resume_data.get('education', [])}
         
         JOB INFORMATION:
         Company: {job_data.get('company_name', 'N/A')}
