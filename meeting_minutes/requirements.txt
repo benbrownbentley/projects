@@ -1,0 +1,20 @@
+"""
+Requirements file for Meeting Minutes Generator
+
+Install these dependencies using: pip install -r requirements.txt
+"""
+
+# Core dependencies
+gradio>=4.0.0
+openai>=1.0.0
+python-dotenv>=1.0.0
+
+# Audio processing (optional - for advanced features)
+# pydub>=0.25.1
+# librosa>=0.10.0
+# soundfile>=0.12.1
+
+# Development dependencies (optional)
+# pytest>=7.0.0
+# black>=23.0.0
+# flake8>=6.0.0
